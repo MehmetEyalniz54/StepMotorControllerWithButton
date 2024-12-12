@@ -1,0 +1,93 @@
+#include <aduc841.h>  
+
+; program etiketleri tanımlanıyor
+ENA  EQU P0.4  ; Sürücü A köprüsü enerjilendirme girişi.  
+ENB  EQU P0.5  ; Sürücü B köprüsü enerjilendirme girişi.  
+IN1  EQU P0.3  ; Sürücü IN1 girişi.  
+IN2  EQU P0.2  ; Sürücü IN2 girişi.  
+IN3  EQU P0.1  ; Sürücü IN3 girişi.  
+IN4  EQU P0.0  ; Sürücü IN4 girişi.  
+BT5  EQU P3.3  ; Program başlatma butonu.  
+TUR  EQU 00H   ; Kullanıcıdan alınan tur bilgisi.  
+ADIM EQU 01H   ; Adım kontrol etiketi.
+
+ORG 0000h  
+JMP BASLA  
+
+ORG 0003H  
+JMP EXT_INT0  ; Dış kesme INT0-P3.2  
+
+BASLA:  
+MOV P0, #00h  ; Başlangıçta tüm pinler kapalı (Loji̇k 0)
+MOV TMOD, #01H  ; Timer0 16-Bit Zamanlayıcı  
+MOV TH0, #0B8H  ; Zamanlayıcı ayarları (5ms için)
+MOV TL0, #0EH   ; Alt zamanlayıcı değeri
+SETB EA         ; Kesmeler aktif  
+SETB EX0        ; Dış kesme0 aktif
+
+X1: JNB BT5, X1  ; BT5’e basıldı mı kontrol et?
+X2: JNB BT5, X2  ; BT5 bırakıldı mı kontrol et?
+MOV A, TUR      ; En az bir tur bilgisi var mı kontrol et
+JZ X1           ; Eğer tur sayısı 0 ise BT5’e tekrar basılmasını bekle
+MOV ADIM, #50   ; 50 periyot (200 adım) için sayaç
+
+SETB TR0        ; Timer0 başlatıldı
+
+DEVAM: ; Step motoru adım adım döndür
+SETB ENA               ; Sürücü A köprüsü enerjilendirildi
+CLR ENB                ; Sürücü B köprüsü enerjisi kesildi
+SETB IN1               ; Sürücü IN1 girişi enerjilendirildi
+CLR IN2                ; Sürücü IN2 girişi enerjisi kesildi
+ACALL BEKLE            ; 1. T_adım süresi kadar bekle
+
+SETB ENB               ; Sürücü B köprüsü enerjilendirildi
+CLR ENA                ; Sürücü A köprüsü enerjisi kesildi
+SETB IN2               ; Sürücü IN2 girişi enerjilendirildi
+CLR IN1                ; Sürücü IN1 girişi enerjisi kesildi
+ACALL BEKLE            ; 2. T_adım süresi kadar bekle
+
+SETB ENA               ; Sürücü A köprüsü enerjilendirildi
+CLR ENB                ; Sürücü B köprüsü enerjisi kesildi
+SETB IN3               ; Sürücü IN3 girişi enerjilendirildi
+CLR IN4                ; Sürücü IN4 girişi enerjisi kesildi
+ACALL BEKLE            ; 3. T_adım süresi kadar bekle
+
+SETB ENB               ; Sürücü B köprüsü enerjilendirildi
+CLR ENA                ; Sürücü A köprüsü enerjisi kesildi
+SETB IN4               ; Sürücü IN4 girişi enerjilendirildi
+CLR IN3                ; Sürücü IN3 girişi enerjisi kesildi
+ACALL BEKLE            ; 4. T_adım süresi kadar bekle
+
+DJNZ ADIM, DEVAM       ; 200 adım tamamlandı mı?
+MOV ADIM, #50          ; Yeni bir tur için sayaç yeniden yükleniyor
+DJNZ TUR, DEVAM        ; Girilen tur sayısı kadar adım tamamlandı mı?
+
+MOV P0, #00h           ; Tur sayısı tamamlandığında tüm girişler kapatıldı
+SJMP X1                ; BT5’e tekrar basılmasını bekle
+
+BEKLE:  
+MOV TH0, #0B8H        ; 5ms için başlangıç değeri
+MOV TL0, #0EH         
+CLR TF0               ; Timer0 taşma bayrağı temizleniyor
+JNB TF0, BEKLE        ; Timer0 süresi dolana kadar bekle
+RET                   ; Bekleme süresi tamamlandı
+
+EXT_INT0:  
+ACALL GECIKME         ; Dış kesme gecikme kontrolü
+MOV TUR, #3           ; Varsayılan olarak 3 tur alındı (kullanıcıdan alınabilir)
+RETI                  ; Kesme tamamlandı
+
+GECIKME:              ; Buton debouncing için gecikme fonksiyonu
+MOV R4, #10D
+MOV R5, #0FFH
+MOV R6, #0FFH
+
+DELAY_LOOP:  
+DJNZ R5, DELAY_LOOP  
+MOV R5, #0FFH  
+DJNZ R6, DELAY_LOOP  
+MOV R6, #0FFH  
+DJNZ R4, DELAY_LOOP  
+RET
+
+END
